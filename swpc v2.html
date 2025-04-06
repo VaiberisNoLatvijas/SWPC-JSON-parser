@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Solar Wind Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      background-color: #121212;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+      padding: 1rem;
+    }
+
+    h2 {
+      color: #ffffff;
+      margin-top: 2rem;
+    }
+
+    .chart-container {
+      position: relative;
+      width: 100%;
+      max-width: 1000px;
+      margin: auto;
+    }
+
+    canvas {
+      width: 100% !important;
+      height: auto !important;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Magnetic Field – Bz & Bt (Last 2 Hours)</h2>
+<div class="chart-container"><canvas id="magChart"></canvas></div>
+
+<h2>Solar Wind Speed (km/s)</h2>
+<div class="chart-container"><canvas id="speedChart"></canvas></div>
+
+<h2>Solar Wind Density (p/cm³)</h2>
+<div class="chart-container"><canvas id="densityChart"></canvas></div>
+
+<h2>Solar Wind Temperature (K)</h2>
+<div class="chart-container"><canvas id="tempChart"></canvas></div>
+
+<script>
+  async function fetchData() {
+    const magURL = 'https://services.swpc.noaa.gov/products/solar-wind/mag-2-hour.json';
+    const plasmaURL = 'https://services.swpc.noaa.gov/products/solar-wind/plasma-2-hour.json';
+
+    const [magResponse, plasmaResponse] = await Promise.all([
+      fetch(magURL),
+      fetch(plasmaURL)
+    ]);
+
+    const magRaw = await magResponse.json();
+    const plasmaRaw = await plasmaResponse.json();
+
+    const magHeaders = magRaw[0];
+    const magData = magRaw.slice(1);
+    const plasmaHeaders = plasmaRaw[0];
+    const plasmaData = plasmaRaw.slice(1);
+
+    // Magnetic fields
+    const magLabels = magData.map(r => r[magHeaders.indexOf("time_tag")]);
+    const bzData = magData.map(r => parseFloat(r[magHeaders.indexOf("bz_gsm")]));
+    const btData = magData.map(r => parseFloat(r[magHeaders.indexOf("bt")]));
+
+    // Plasma data
+    const plasmaLabels = plasmaData.map(r => r[plasmaHeaders.indexOf("time_tag")]);
+    const speedData = plasmaData.map(r => parseFloat(r[plasmaHeaders.indexOf("speed")]));
+    const densityData = plasmaData.map(r => parseFloat(r[plasmaHeaders.indexOf("density")]));
+    const tempData = plasmaData.map(r => parseFloat(r[plasmaHeaders.indexOf("temperature")]));
+
+    const verticalLinePlugin = {
+      id: 'verticalLine',
+      afterDraw(chart) {
+        const active = chart.tooltip?.getActiveElements?.();
+        if (active?.length) {
+          const x = active[0].element.x;
+          const ctx = chart.ctx;
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(x, chart.chartArea.top);
+          ctx.lineTo(x, chart.chartArea.bottom);
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = '#aaaaaa';
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    };
+
+    const baseOptions = (yLabel) => ({
+      responsive: true,
+      interaction: {
+        mode: 'index',
+        intersect: false
+      },
+      plugins: {
+        tooltip: {
+          enabled: true,
+          backgroundColor: '#222',
+          titleColor: '#fff',
+          bodyColor: '#ddd',
+          borderColor: '#888',
+          borderWidth: 1
+        },
+        legend: {
+          labels: { color: '#e0e0e0' }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#aaa', maxTicksLimit: 12 },
+          grid: { color: '#333' }
+        },
+        y: {
+          ticks: { color: '#aaa' },
+          grid: { color: '#333' },
+          title: {
+            display: true,
+            text: yLabel,
+            color: '#ccc'
+          }
+        }
+      }
+    });
+
+    const createChart = (id, label, data, color, yAxisLabel) => {
+      new Chart(document.getElementById(id).getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: plasmaLabels,
+          datasets: [{
+            label,
+            data,
+            borderColor: color,
+            backgroundColor: color.replace('1)', '0.3)'),
+            tension: 0.1,
+            pointRadius: 0
+          }]
+        },
+        options: baseOptions(yAxisLabel),
+        plugins: [verticalLinePlugin]
+      });
+    };
+
+    // Magnetic chart
+    new Chart(document.getElementById('magChart').getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: magLabels,
+        datasets: [
+          {
+            label: 'Bz GSM (nT)',
+            data: bzData,
+            borderColor: 'rgba(255, 99, 132, 1)',
+            backgroundColor: 'rgba(255, 99, 132, 0.3)',
+            tension: 0.1,
+            pointRadius: 0
+          },
+          {
+            label: 'Bt Total (nT)',
+            data: btData,
+            borderColor: 'rgba(54, 162, 235, 1)',
+            backgroundColor: 'rgba(54, 162, 235, 0.3)',
+            tension: 0.1,
+            pointRadius: 0
+          }
+        ]
+      },
+      options: baseOptions('nT'),
+      plugins: [verticalLinePlugin]
+    });
+
+    // Plasma charts
+    createChart('speedChart', 'Speed (km/s)', speedData, 'rgba(255, 206, 86, 1)', 'km/s');
+    createChart('densityChart', 'Density (p/cm³)', densityData, 'rgba(75, 192, 192, 1)', 'particles/cm³');
+    createChart('tempChart', 'Temperature (K)', tempData, 'rgba(153, 102, 255, 1)', 'Kelvin');
+  }
+
+  fetchData();
+</script>
+
+</body>
+</html>
